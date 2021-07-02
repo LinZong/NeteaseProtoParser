@@ -2,7 +2,8 @@
 import struct
 
 # Constant Definitions
-HexStringMap = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f']
+HexStringMap = ['0', '1', '2', '3', '4', '5', '6',
+                '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f']
 UNKNOWN_SIZE = -1
 BlankSymbol = [" ", "\n", "\r", "\t"]
 
@@ -14,6 +15,7 @@ def is_alphabet(ch):
 
 
 def is_underscore(ch):
+    # 黑体
     return ch == '_'
 
 
@@ -26,6 +28,14 @@ def is_valid_c_style_var_name(ch, first=False):
     if first:
         return is_alphabet(ch) or is_underscore(ch)
     return is_alphabet(ch) or is_underscore(ch) or is_digit(ch)
+
+
+def convert_stringify_byte_array_to_list(stringify_bytes):
+    return [ord(x) for x in stringify_bytes]
+
+
+def convert_byte_list_to_stringify_byte_array(bytes_list):
+    return "".join([chr(x) for x in bytes_list])
 
 
 def WrapToUnicode(original):
@@ -60,7 +70,7 @@ class Type(object):
     def serialize(self, runtime_value):
         pass
 
-    def deserialize(self, serialized_value):
+    def deserialize(self, byte_stream_reader):
         pass
 
 
@@ -87,14 +97,14 @@ class PrimitiveType(Type):
             return True
         return False
 
-    # runtime_value 是字节数组的string表示法
-    # 返回字节数组的int位表示法
-    def serialize(self, runtime_value):
-        return [ord(x) for x in runtime_value]
-
-    # 将字节数组int表示法转换成python内部string表示法
-    def deserialize(self, serialized_value):
-        return "".join([chr(x) for x in serialized_value])
+    # # runtime_value 是字节数组的string表示法
+    # # 返回字节数组的int位表示法
+    # def serialize(self, runtime_value):
+    #     return [ord(x) for x in runtime_value]
+    # 
+    # # 将字节数组int表示法转换成python内部string表示法
+    # def deserialize(self, byte_stream_reader):
+    #     return "".join([chr(x) for x in byte_stream_reader])
 
 
 class VariableSizePrimitiveType(PrimitiveType):
@@ -168,12 +178,161 @@ class ArrayType(Type):
         # TODO 实现，变长数组需要额外记录长度信息
         pass
 
-    def deserialize(self, serialized_value):
+    def deserialize(self, byte_stream_reader):
         # TODO 实现反序列化
         pass
 
 
+# Then we define some common primitive type here.
+
+
+class Int8(PrimitiveType):
+    def __init__(self):
+        super(Int8, self).__init__("int8", 1)
+
+    def serialize(self, runtime_value):
+        return convert_stringify_byte_array_to_list(struct.pack("<b", runtime_value))
+
+    def deserialize(self, byte_stream_reader):
+        return struct.unpack("<b", convert_byte_list_to_stringify_byte_array(byte_stream_reader.read(self.get_size())))[
+            0]
+
+
+class UInt8(PrimitiveType):
+    def __init__(self):
+        super(UInt8, self).__init__("uint8", 1)
+
+    def serialize(self, runtime_value):
+        return convert_stringify_byte_array_to_list(struct.pack("<B", runtime_value))
+
+    def deserialize(self, byte_stream_reader):
+        return struct.unpack("<B", convert_byte_list_to_stringify_byte_array(byte_stream_reader.read(self.get_size())))[
+            0]
+
+
+class Int16(PrimitiveType):
+    def __init__(self):
+        super(Int16, self).__init__("int16", 2)
+
+    def serialize(self, runtime_value):
+        return convert_stringify_byte_array_to_list(struct.pack("<h", runtime_value))
+
+    def deserialize(self, byte_stream_reader):
+        return struct.unpack("<h", convert_byte_list_to_stringify_byte_array(byte_stream_reader.read(self.get_size())))[
+            0]
+
+
+class UInt16(PrimitiveType):
+    def __init__(self):
+        super(UInt16, self).__init__("uint16", 2)
+
+    def serialize(self, runtime_value):
+        return convert_stringify_byte_array_to_list(struct.pack("<H", runtime_value))
+
+    def deserialize(self, byte_stream_reader):
+        return struct.unpack("<H", convert_byte_list_to_stringify_byte_array(byte_stream_reader.read(self.get_size())))[
+            0]
+
+
+class Int32(PrimitiveType):
+    def __init__(self):
+        super(Int32, self).__init__("int32", 4)
+
+    def serialize(self, runtime_value):
+        return convert_stringify_byte_array_to_list(struct.pack("<i", runtime_value))
+
+    def deserialize(self, byte_stream_reader):
+        return struct.unpack("<i", convert_byte_list_to_stringify_byte_array(byte_stream_reader.read(self.get_size())))[
+            0]
+
+
+class UInt32(PrimitiveType):
+    def __init__(self):
+        super(UInt32, self).__init__("uint32", 4)
+
+    def serialize(self, runtime_value):
+        return convert_stringify_byte_array_to_list(struct.pack("<I", runtime_value))
+
+    def deserialize(self, byte_stream_reader):
+        return struct.unpack("<I", convert_byte_list_to_stringify_byte_array(byte_stream_reader.read(self.get_size())))[
+            0]
+
+
+class Float(PrimitiveType):
+    def __init__(self):
+        super(Float, self).__init__("float", 4)
+
+    def serialize(self, runtime_value):
+        return convert_stringify_byte_array_to_list(struct.pack("<f", runtime_value))
+
+    def deserialize(self, byte_stream_reader):
+        return struct.unpack("<f", convert_byte_list_to_stringify_byte_array(byte_stream_reader.read(self.get_size())))[
+            0]
+
+
+class Double(PrimitiveType):
+    def __init__(self):
+        super(Double, self).__init__("double", 8)
+
+    def serialize(self, runtime_value):
+        return convert_stringify_byte_array_to_list(struct.pack("<d", runtime_value))
+
+    def deserialize(self, byte_stream_reader):
+        return struct.unpack("<d", convert_byte_list_to_stringify_byte_array(byte_stream_reader.read(self.get_size())))[
+            0]
+
+
+class Bool(PrimitiveType):
+    def __init__(self):
+        super(Bool, self).__init__("bool", 1)
+
+    def serialize(self, runtime_value):
+        return convert_stringify_byte_array_to_list(struct.pack("<?", runtime_value))
+
+    def deserialize(self, byte_stream_reader):
+        return struct.unpack("<?", convert_byte_list_to_stringify_byte_array(byte_stream_reader.read(self.get_size())))[
+            0]
+
+
+class String(VariableSizePrimitiveType):
+
+    def __init__(self):
+        super(String, self).__init__("string", 2)
+
+    def calc_size(self, runtime_value):
+        return self.get_size() + len(WrapToUnicode(runtime_value))
+
+    def serialize(self, runtime_value):
+        length_field = Field(
+            UINT_16, "string-length-property", self.calc_size(runtime_value))
+        length_serialized = length_field.serialize()
+        str_bytes = bytearray(WrapToUnicode(runtime_value), encoding="utf-8")
+        return length_serialized + [int(x) for x in str_bytes]
+
+    def deserialize(self, byte_stream_reader):
+        # 先读最开始的两个字节，看看整个字符串有多长
+        length = UINT_16.deserialize(byte_stream_reader.read(2))
+
+        pass
+
+
+INT_8 = Int8()
+UINT_8 = UInt8()
+INT_16 = Int16()
+UINT_16 = UInt16()
+INT_32 = Int32()
+UINT_32 = UInt32()
+FLOAT = Float()
+DOUBLE = Double()
+BOOL = Bool()
+STRING = String()
+
+TypeNamingMap = {x.name: x for x in [
+    INT_8, UINT_8, INT_16, UINT_16, INT_32, UINT_32, FLOAT, DOUBLE, BOOL, STRING]}
+
+
 # Then we defile field
+
 
 class Field(object):
     def __init__(self, typ, name, value):
@@ -220,6 +379,34 @@ class ArrayField(Field):
             return sum([self.typ.calc_size(x) for x in self.get_values()])
         return sum([x.get_size() for x in self.get_values()])
 
+    def serialize(self):
+        # TODO 数组分情况序列化。
+        res = []
+        # 是变长数组，需要先写入长度信息
+        if not self.typ.fixed_length:
+            res += Field(UINT_16, "variable-sized-arr-length",
+                         self.get_length()).serialize()
+        # 再对数组元素逐一序列化
+        for v in self.value:
+            res += self.typ.serialize(v)
+        return res
+
+    def deserialize(self, serialized_value):
+        # 先看是否为变长数组
+        read_length = self.typ.length
+        if not self.typ.fixed_length:
+            # 读取长度
+            read_length = UINT_16.deserialize(
+                serialized_value[0:UINT_16.get_size()])  # UInt16占用两个字节
+            # 切片剩下的字节数
+            serialized_value = serialized_value[UINT_16.get_size():]
+        elements = []
+        for i in range(0, read_length):
+            element_bytes = serialized_value[0: self.typ.get_size()]
+            serialized_value = serialized_value[self.typ.get_size():]
+            elements += self.typ.deserialize(element_bytes)
+        return elements
+
 
 class CompositeField(Field):
     def __init__(self, name):
@@ -230,136 +417,30 @@ class CompositeField(Field):
         self.fields.append(field)
         self.typ.add_type(field.typ)
 
-
-class String(VariableSizePrimitiveType):
-
-    def __init__(self):
-        super(String, self).__init__("string", 2)
-
-    def calc_size(self, runtime_value):
-        return self.get_size() + len(WrapToUnicode(runtime_value))
-
-    def serialize(self, runtime_value):
-        str_bytes = bytearray(WrapToUnicode(runtime_value), encoding="utf-8")
-        return [int(x) for x in str_bytes]
-
-    def deserialize(self, serialized_value):
-        return super(String, self).deserialize(serialized_value)
+    def serialize(self):
+        res = []
+        for field in self.fields:
+            res += field.serialize()
+        return res
 
 
-# Then we define some common primitive type here.
+class ByteArrayInputStream(object):
 
-class Int8(PrimitiveType):
-    def __init__(self):
-        super(Int8, self).__init__("int8", 1)
+    def __init__(self, arr):
+        super(ByteArrayInputStream, self).__init__()
+        self.arr = arr
+        self.index = 0
 
-    def serialize(self, runtime_value):
-        return super(Int8, self).serialize(struct.pack("<b", runtime_value))
+    def advance(self, count=1):
+        self.arr = self.arr[self.index + count:]
 
-    def deserialize(self, serialized_value):
-        return struct.unpack("<b", super(Int8, self).deserialize(serialized_value))[0]
+    def read(self, count=1):
+        b = self.peek(count)
+        self.advance(count)
+        return b
 
-
-class UInt8(PrimitiveType):
-    def __init__(self):
-        super(UInt8, self).__init__("uint8", 1)
-
-    def serialize(self, runtime_value):
-        return super(UInt8, self).serialize(struct.pack("<B", runtime_value))
-
-    def deserialize(self, serialized_value):
-        return struct.unpack("<B", super(UInt8, self).deserialize(serialized_value))[0]
-
-
-class Int16(PrimitiveType):
-    def __init__(self):
-        super(Int16, self).__init__("int16", 2)
-
-    def serialize(self, runtime_value):
-        return super(Int16, self).serialize(struct.pack("<h", runtime_value))
-
-    def deserialize(self, serialized_value):
-        return struct.unpack("<h", super(Int16, self).deserialize(serialized_value))[0]
-
-
-class UInt16(PrimitiveType):
-    def __init__(self):
-        super(UInt16, self).__init__("uint16", 2)
-
-    def serialize(self, runtime_value):
-        return super(UInt16, self).serialize(struct.pack("<H", runtime_value))
-
-    def deserialize(self, serialized_value):
-        return struct.unpack("<H", super(UInt16, self).deserialize(serialized_value))[0]
-
-
-class Int32(PrimitiveType):
-    def __init__(self):
-        super(Int32, self).__init__("int32", 4)
-
-    def serialize(self, runtime_value):
-        return super(Int32, self).serialize(struct.pack("<i", runtime_value))
-
-    def deserialize(self, serialized_value):
-        return struct.unpack("<i", super(Int32, self).deserialize(serialized_value))[0]
-
-
-class UInt32(PrimitiveType):
-    def __init__(self):
-        super(UInt32, self).__init__("uint32", 4)
-
-    def serialize(self, runtime_value):
-        return super(UInt32, self).serialize(struct.pack("<I", runtime_value))
-
-    def deserialize(self, serialized_value):
-        return struct.unpack("<I", super(UInt32, self).deserialize(serialized_value))[0]
-
-
-class Float(PrimitiveType):
-    def __init__(self):
-        super(Float, self).__init__("float", 4)
-
-    def serialize(self, runtime_value):
-        return super(Float, self).serialize(struct.pack("<f", runtime_value))
-
-    def deserialize(self, serialized_value):
-        return struct.unpack("<f", super(Float, self).deserialize(serialized_value))[0]
-
-
-class Double(PrimitiveType):
-    def __init__(self):
-        super(Double, self).__init__("double", 8)
-
-    def serialize(self, runtime_value):
-        return super(Double, self).serialize(struct.pack("<d", runtime_value))
-
-    def deserialize(self, serialized_value):
-        return struct.unpack("<d", super(Double, self).deserialize(serialized_value))[0]
-
-
-class Bool(PrimitiveType):
-    def __init__(self):
-        super(Bool, self).__init__("bool", 1)
-
-    def serialize(self, runtime_value):
-        return super(Bool, self).serialize(struct.pack("<?", runtime_value))
-
-    def deserialize(self, serialized_value):
-        return struct.unpack("<?", super(Bool, self).deserialize(serialized_value))[0]
-
-
-INT_8 = Int8()
-UINT_8 = UInt8()
-INT_16 = Int16()
-UINT_16 = UInt16()
-INT_32 = Int32()
-UINT_32 = UInt32()
-FLOAT = Float()
-DOUBLE = Double()
-BOOL = Bool()
-STRING = String()
-
-TypeNamingMap = {x.name: x for x in [INT_8, UINT_8, INT_16, UINT_16, INT_32, UINT_32, FLOAT, DOUBLE, BOOL, STRING]}
+    def peek(self, count=1):
+        return self.arr[self.index:self.index + count]
 
 
 class ProtoReader(object):
@@ -393,7 +474,8 @@ class ProtoReader(object):
             raise self.error("EOF")
         ch = self.read_skip_blank()
         if not is_valid_c_style_var_name(ch, first=True):
-            raise self.error("c-style variable name should be started with alphabet or underscore.")
+            raise self.error(
+                "c-style variable name should be started with alphabet or underscore.")
         name += ch
         while not self.reach_end():
             ch = self.peek()
@@ -405,7 +487,8 @@ class ProtoReader(object):
                 name += ch
                 self.advance()
             else:
-                raise self.error("not a valid char for c-style variable name: %s." % ch)
+                raise self.error(
+                    "not a valid char for c-style variable name: %s." % ch)
 
         return name
 
@@ -480,12 +563,14 @@ class ProtoParser(object):
         elif int_size == '1':
             int_size += reader.read()
             if int_size != "16":
-                self.raise_error("expect int16 but %s occurred." % (type_name + int_size))
+                self.raise_error("expect int16 but %s occurred." %
+                                 (type_name + int_size))
             type_name += "16"
         elif int_size == '3':
             int_size += reader.read()
             if int_size != "32":
-                self.raise_error("expect int32 but %s occurred." % (type_name + int_size))
+                self.raise_error("expect int32 but %s occurred." %
+                                 (type_name + int_size))
             type_name += "32"
         # 现在int_size存了具体的值了
         # 接着往后读一个字符，看看会不会是数组定义
@@ -508,12 +593,14 @@ class ProtoParser(object):
         elif int_size == '1':
             int_size += reader.read()
             if int_size != "16":
-                self.raise_error("expect uint16 but %s occurred." % (type_name + int_size))
+                self.raise_error("expect uint16 but %s occurred." %
+                                 (type_name + int_size))
             type_name += "16"
         elif int_size == '3':
             int_size += reader.read()
             if int_size != "32":
-                self.raise_error("expect uint32 but %s occurred." % (type_name + int_size))
+                self.raise_error("expect uint32 but %s occurred." %
+                                 (type_name + int_size))
             type_name += "32"
         # 现在int_size存了具体的值了
         # 接着往后读一个字符，看看会不会是数组定义
@@ -540,7 +627,8 @@ class ProtoParser(object):
         type_name = expected_full_name[0:1]
         type_name += reader.reads(len(expected_full_name) - 1)
         if type_name != expected_full_name:
-            self.raise_error("expect %s, but %s occurred" % (expected_full_name, type_name))
+            self.raise_error("expect %s, but %s occurred" %
+                             (expected_full_name, type_name))
         # 现在int_size存了具体的值了
         # 接着往后读一个字符，看看会不会是数组定义
         is_array, array_size = self.try_parse_array_definition(reader)
@@ -585,7 +673,8 @@ class ProtoParser(object):
                     # {时入, }时出
                     self.parsing_fields_pack = self.parsing_fields_pack[:-1]
                     if is_array:
-                        wrap_field = ArrayField(ArrayType(pack.typ, size), field_name, None)
+                        wrap_field = ArrayField(
+                            ArrayType(pack.typ, size), field_name, None)
                         # 将栈顶替换为包装后的数组类型
                         self.parsing_fields_pack[-1:][0].add_field(wrap_field)
                     else:
@@ -593,7 +682,8 @@ class ProtoParser(object):
                         self.parsing_fields_pack[-1:][0].add_field(pack)
                 return
             else:
-                self.raise_error("invalid ch %s at %s" % (ch, reader.index - 1))
+                self.raise_error("invalid ch %s at %s" %
+                                 (ch, reader.index - 1))
 
     def parse(self, proto_text):
         reader = ProtoReader(proto_text)
@@ -604,7 +694,8 @@ class ProtoParser(object):
                 self.parse_into(reader, self.root_fields)
                 self.parsing_fields_pack = self.parsing_fields_pack[:-1]
             else:
-                self.raise_error("invalid char %s at %s" % (ch, reader.index - 1))
+                self.raise_error("invalid char %s at %s" %
+                                 (ch, reader.index - 1))
         pass
 
     def raise_error(self, msg):
