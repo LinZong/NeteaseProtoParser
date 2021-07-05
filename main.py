@@ -1,6 +1,12 @@
 # coding=utf-8
 # Press the green button in the gutter to run the script.
 from proto_parser import *
+import json
+
+
+def print_dict(d):
+    print json.dumps(d, encoding="utf-8", ensure_ascii=False)
+
 
 test_obj = {
     "name": "骨精灵",
@@ -40,8 +46,8 @@ def test2():
         dump_hex_str = parser.dumps(test_obj)
         print dump_hex_str
         recover_obj = parser.loads(dump_hex_str)
-        print test_obj
-        print recover_obj
+        print_dict(test_obj)
+        print_dict(recover_obj)
 
 
 if __name__ == '__main__':
