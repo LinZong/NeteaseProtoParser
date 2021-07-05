@@ -121,9 +121,11 @@ class CompositeType(Type):
     def __init__(self):
         super(CompositeType, self).__init__()
         self.inner_types = []
+        self.inner_types_str_key = []
 
-    def add_type(self, inner_type):
+    def add_type(self, inner_type, type_str_key):
         self.inner_types.append(inner_type)
+        self.inner_types_str_key.append(type_str_key)
 
     def generate_type_map(self):
         m = {}
@@ -157,6 +159,26 @@ class CompositeType(Type):
         o_self = o.generate_type_map()
         return m_self == o_self
 
+    def serialize(self, runtime_value):
+        assert isinstance(runtime_value, dict)
+        res = []
+        for i in range(0, len(self.inner_types)):
+            typ = self.inner_types[i]
+            typ_key = self.inner_types_str_key[i]
+            value_obj = runtime_value.get(typ_key)
+            if value_obj is None:
+                raise Exception("%s is not found in runtime_value" % typ_key)
+            res += typ.serialize(value_obj)
+        return res
+
+    def deserialize(self, byte_stream_reader):
+        res = {}
+        for i in range(0, len(self.inner_types)):
+            typ = self.inner_types[i]
+            typ_key = self.inner_types_str_key[i]
+            res[typ_key] = typ.deserialize(byte_stream_reader)
+        return res
+
 
 class ArrayType(Type):
 
@@ -175,12 +197,25 @@ class ArrayType(Type):
         return self.element_type.get_descriptor() + "[]"
 
     def serialize(self, runtime_value):
-        # TODO 实现，变长数组需要额外记录长度信息
-        pass
+        res = []
+        if not self.fixed_length:
+            # 不是定长数组，在序列化数据中写入长度信息
+            res += UINT_16.serialize(len(runtime_value))
+        for x in runtime_value:
+            res += self.element_type.serialize(x)
+        return res
 
     def deserialize(self, byte_stream_reader):
-        # TODO 实现反序列化
-        pass
+        read_length = self.length
+        if not self.fixed_length:
+            read_length = UINT_16.deserialize(byte_stream_reader)
+        res = []
+        for i in range(0, read_length):
+            x = self.element_type.deserialize(byte_stream_reader)
+            res.append(x)
+
+        # OJ prefers tuple than list for array-type, so we convert it to make it happy.
+        return tuple(res)
 
 
 # Then we define some common primitive type here.
@@ -303,11 +338,19 @@ class String(VariableSizePrimitiveType):
         return len(WrapToUnicode(runtime_value))
 
     def serialize(self, runtime_value):
+        # return self.__serialize_use_raw_data_length(runtime_value)
         length_field = Field(
             UINT_16, "string-length-property", self.calc_size(runtime_value))
         length_serialized = length_field.serialize()
         str_bytes = bytearray(WrapToUnicode(runtime_value), encoding="utf-8")
         return length_serialized + [int(x) for x in str_bytes]
+
+    @staticmethod
+    def __serialize_use_raw_data_length(runtime_value):
+        str_bytes = bytearray(WrapToUnicode(runtime_value), encoding="utf-8")
+        data = [int(x) for x in str_bytes]
+        length = UINT_16.serialize(len(data))
+        return length + data
 
     def deserialize(self, byte_stream_reader):
         # 先读最开始的两个字节，看看整个字符串有多长
@@ -349,6 +392,7 @@ TypeNamingMap = {x.name: x for x in [
 
 
 class Field(object):
+    # value is plain python object.
     def __init__(self, typ, name, value):
         self.typ = typ
         self.name = name
@@ -366,16 +410,21 @@ class Field(object):
         # Fixed-length primitive type.
         return self.typ.get_size()
 
+    def set_value(self, value):
+        self.value = value
+
+    # Field's serialization & deserialization will be delegated to type's methods.
     def serialize(self):
         return self.typ.serialize(self.value)
 
-    def deserialize(self, serialized_value):
-        return self.typ.deserialize(serialized_value)
+    # Field's serialization & deserialization will be delegated to type's methods.
+    def deserialize(self, byte_stream_reader):
+        return self.typ.deserialize(byte_stream_reader)
 
 
 class ArrayField(Field):
 
-    # typ is array-type, value is element array
+    # typ is array-type, value is field-wrapped element array.
     def __init__(self, typ, name, value):
         super(ArrayField, self).__init__(typ, name, value)
 
@@ -389,53 +438,70 @@ class ArrayField(Field):
         return self.value
 
     def get_size(self):
-        if isinstance(self.typ, VariableSizePrimitiveType):
-            return sum([self.typ.calc_size(x) for x in self.get_values()])
+        if isinstance(self.typ.element_type, VariableSizePrimitiveType):
+            return sum([self.typ.element_type.calc_size(x) for x in self.get_values()])
         return sum([x.get_size() for x in self.get_values()])
 
-    def serialize(self):
-        # TODO 数组分情况序列化。
-        res = []
-        # 是变长数组，需要先写入长度信息
-        if not self.typ.fixed_length:
-            res += Field(UINT_16, "variable-sized-arr-length",
-                         self.get_length()).serialize()
-        # 再对数组元素逐一序列化
-        for v in self.value:
-            res += self.typ.serialize(v)
-        return res
+    def set_value(self, value):
+        if isinstance(value, tuple):
+            value = [x for x in value]
+        assert isinstance(value, list)
+        self.value = value
 
-    def deserialize(self, serialized_value):
+    def serialize(self):
+        # # TODO 数组分情况序列化。
+        # res = []
+        # # 是变长数组，需要先写入长度信息
+        # if not self.typ.fixed_length:
+        #     res += Field(UINT_16, "variable-sized-arr-length",
+        #                  self.get_length()).serialize()
+        # # 再对数组元素逐一序列化
+        return self.typ.serialize(self.value)
+
+    def deserialize(self, byte_stream_reader):
         # 先看是否为变长数组
-        read_length = self.typ.length
-        if not self.typ.fixed_length:
-            # 读取长度
-            read_length = UINT_16.deserialize(
-                serialized_value[0:UINT_16.get_size()])  # UInt16占用两个字节
-            # 切片剩下的字节数
-            serialized_value = serialized_value[UINT_16.get_size():]
-        elements = []
-        for i in range(0, read_length):
-            element_bytes = serialized_value[0: self.typ.get_size()]
-            serialized_value = serialized_value[self.typ.get_size():]
-            elements += self.typ.deserialize(element_bytes)
-        return elements
+        # read_length = self.typ.length
+        # if not self.typ.fixed_length:
+        #     # 读取长度
+        #     read_length = UINT_16.deserialize(byte_stream_reader)  # UInt16占用两个字节
+        #     # 切片剩下的字节数
+        # elements = []
+        # for i in range(0, read_length):
+        #     element_bytes = byte_stream_reader.read(self.typ.get_size())
+        #     elements += self.typ.deserialize(element_bytes)
+        # return elements
+        return self.typ.deserialize(byte_stream_reader)
 
 
 class CompositeField(Field):
+
     def __init__(self, name):
         super(CompositeField, self).__init__(CompositeType(), name, None)
         self.fields = []
 
     def add_field(self, field):
         self.fields.append(field)
-        self.typ.add_type(field.typ)
+        self.typ.add_type(field.typ, field.name)
 
     def serialize(self):
-        res = []
-        for field in self.fields:
-            res += field.serialize()
+        return self.typ.serialize(self.value)
+
+    def deserialize(self, byte_stream_reader):
+        res = {}
+        for f in self.fields:
+            res[f.name] = f.deserialize(byte_stream_reader)
         return res
+
+    # ensure 'value' is dict, then dispatch such dict into each named-fields.
+    def set_value(self, value):
+        assert isinstance(value, dict)
+        self.value = value
+        # for field in self.fields:
+        #     name = field.name
+        #     dict_value = value.get(name)
+        #     if dict_value is None:
+        #         continue
+        #     field.set_value(dict_value)
 
 
 class ByteArrayInputStream(object):
@@ -698,6 +764,14 @@ class ProtoParser(object):
             else:
                 self.raise_error("invalid ch %s at %s" %
                                  (ch, reader.index - 1))
+
+    def dumps(self, d):
+        self.root_fields.set_value(d)
+        return ToHexString(self.root_fields.serialize())
+
+    def loads(self, s):
+        data = ParseHexString(s)
+        return self.root_fields.deserialize(ByteArrayInputStream(data))
 
     def parse(self, proto_text):
         reader = ProtoReader(proto_text)

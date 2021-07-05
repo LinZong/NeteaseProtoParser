@@ -1,0 +1,6 @@
+{
+    string a;
+    uint16[] b;
+    float[2] c;
+    bool f;
+}
