@@ -300,7 +300,7 @@ class String(VariableSizePrimitiveType):
         super(String, self).__init__("string", 2)
 
     def calc_size(self, runtime_value):
-        return self.get_size() + len(WrapToUnicode(runtime_value))
+        return len(WrapToUnicode(runtime_value))
 
     def serialize(self, runtime_value):
         length_field = Field(
@@ -311,9 +311,23 @@ class String(VariableSizePrimitiveType):
 
     def deserialize(self, byte_stream_reader):
         # 先读最开始的两个字节，看看整个字符串有多长
-        length = UINT_16.deserialize(byte_stream_reader.read(2))
+        str_length = UINT_16.deserialize(byte_stream_reader)
+        str_content = ""
+        for i in range(0, str_length):
+            content = byte_stream_reader.read(1)
+            bytes_count = self.__get_unicode_continuous_bytes_count(content[0])
+            content += byte_stream_reader.read(bytes_count - 1)
+            str_content += bytearray(convert_byte_list_to_stringify_byte_array(content)).decode(encoding="utf-8")
+        return str_content
 
-        pass
+    @staticmethod
+    def __get_unicode_continuous_bytes_count(first_byte):
+        for i in range(7, 3, -1):
+            if (first_byte >> i) & 1 == 0:
+                if i == 7:
+                    return 1
+                return 7 - i
+        raise Exception("%s is not the first byte of utf-8 encoded string.")
 
 
 INT_8 = Int8()
