@@ -1,5 +1,6 @@
 # coding=utf-8
 import struct
+import zlib
 
 # Constant Definitions
 HexStringMap = ['0', '1', '2', '3', '4', '5', '6',
@@ -43,7 +44,7 @@ def convert_byte_list_to_stringify_byte_array(bytes_list):
     return "".join([chr(x) for x in bytes_list])
 
 
-def wrap_to_unicode_str(original):
+def WrapToUnicode(original):
     return unicode(original, encoding="utf-8")
 
 
@@ -67,16 +68,16 @@ def ParseHexString(hex_str):
 
 class Type(object):
     def get_size(self):
-        raise Exception("Stub!")
+        pass
 
     def get_descriptor(self):
-        raise Exception("Stub!")
+        pass
 
     def serialize(self, runtime_value):
-        raise Exception("Stub!")
+        pass
 
     def deserialize(self, byte_stream_reader):
-        raise Exception("Stub!")
+        pass
 
 
 class PrimitiveType(Type):
@@ -333,19 +334,19 @@ class String(VariableSizePrimitiveType):
         super(String, self).__init__("string", 2)
 
     def calc_size(self, runtime_value):
-        return len(wrap_to_unicode_str(runtime_value))
+        return len(WrapToUnicode(runtime_value))
 
     def serialize(self, runtime_value):
         if USE_RAW_BYTES_AS_STRING_LENGTH:
             return self.__serialize_use_raw_data_length(runtime_value)
 
-        utf_8_repr_runtime_value = wrap_to_unicode_str(runtime_value)
+        utf_8_repr_runtime_value = WrapToUnicode(runtime_value)
         str_bytes = bytearray(utf_8_repr_runtime_value, encoding="utf-8")
         return UINT_16.serialize(len(utf_8_repr_runtime_value)) + [int(x) for x in str_bytes]
 
     @staticmethod
     def __serialize_use_raw_data_length(runtime_value):
-        str_bytes = bytearray(wrap_to_unicode_str(runtime_value), encoding="utf-8")
+        str_bytes = bytearray(WrapToUnicode(runtime_value), encoding="utf-8")
         data = [int(x) for x in str_bytes]
         length = UINT_16.serialize(len(data))
         return length + data
@@ -390,64 +391,12 @@ DOUBLE = Double()
 BOOL = Bool()
 STRING = String()
 
-TypeNamingMap = {x.name: x for x in [INT_8, UINT_8, INT_16, UINT_16, INT_32, UINT_32, FLOAT, DOUBLE, BOOL, STRING]}
-
-
-class CompressedUInt8(UInt8):
-
-    def serialize(self, runtime_value):
-        return super(CompressedUInt8, self).serialize(runtime_value)
-
-    def deserialize(self, byte_stream_reader):
-        return super(CompressedUInt8, self).deserialize(byte_stream_reader)
-
-
-class CompressedInt8(Int8):
-
-    def serialize(self, runtime_value):
-        return super(CompressedInt8, self).serialize(runtime_value)
-
-    def deserialize(self, byte_stream_reader):
-        return super(CompressedInt8, self).deserialize(byte_stream_reader)
-
-
-class CompressedUInt16(UInt16):
-
-    def serialize(self, runtime_value):
-        return super(CompressedUInt16, self).serialize(runtime_value)
-
-    def deserialize(self, byte_stream_reader):
-        return super(CompressedUInt16, self).deserialize(byte_stream_reader)
-
-
-class CompressedInt16(Int16):
-
-    def serialize(self, runtime_value):
-        return super(CompressedInt16, self).serialize(runtime_value)
-
-    def deserialize(self, byte_stream_reader):
-        return super(CompressedInt16, self).deserialize(byte_stream_reader)
-
-
-class CompressedUInt32(Int32):
-
-    def serialize(self, runtime_value):
-        return super(CompressedUInt32, self).serialize(runtime_value)
-
-    def deserialize(self, byte_stream_reader):
-        return super(CompressedUInt32, self).deserialize(byte_stream_reader)
-
-
-class CompressedInt32(Int32):
-
-    def serialize(self, runtime_value):
-        return super(CompressedInt32, self).serialize(runtime_value)
-
-    def deserialize(self, byte_stream_reader):
-        return super(CompressedInt32, self).deserialize(byte_stream_reader)
+TypeNamingMap = {x.name: x for x in [
+    INT_8, UINT_8, INT_16, UINT_16, INT_32, UINT_32, FLOAT, DOUBLE, BOOL, STRING]}
 
 
 # Then we defile field
+
 
 class Field(object):
     # value is plain python object.
@@ -506,6 +455,12 @@ class ArrayField(Field):
         assert isinstance(value, list)
         self.value = value
 
+    def serialize(self):
+        return self.typ.serialize(self.value)
+
+    def deserialize(self, byte_stream_reader):
+        return self.typ.deserialize(byte_stream_reader)
+
 
 class CompositeField(Field):
 
@@ -516,6 +471,12 @@ class CompositeField(Field):
     def add_field(self, field):
         self.fields.append(field)
         self.typ.add_type(field.typ, field.name)
+
+    def serialize(self):
+        return self.typ.serialize(self.value)
+
+    def deserialize(self, byte_stream_reader):
+        return self.typ.deserialize(byte_stream_reader)
 
     # ensure 'value' is dict, then dispatch such dict into each named-fields.
     def set_value(self, value):
@@ -545,7 +506,7 @@ class ByteArrayInputStream(object):
 class ProtoReader(object):
     def __init__(self, proto_str):
         super(ProtoReader, self).__init__()
-        self.proto_str = wrap_to_unicode_str(proto_str)
+        self.proto_str = WrapToUnicode(proto_str)
         self.index = 0
 
     def advance(self, count=1):
@@ -579,7 +540,8 @@ class ProtoReader(object):
         while not self.reach_end():
             ch = self.read_skip_blank()
             if ch == ';':
-                # 结束 已经吃掉;号
+                # 结束
+                # 已经吃掉;号
                 return name
             elif is_valid_c_style_var_name(ch, first=False):
                 name += ch
@@ -793,10 +755,10 @@ class ProtoParser(object):
         return self.root_fields.deserialize(ByteArrayInputStream(data))
 
     def dumpComp(self, d):
-        return self.dumps(d)
+        return zlib.compress(self.dumps(d))
 
     def loadComp(self, s):
-        return self.loads(s)
+        return self.loads(zlib.decompress(s))
 
     def parse(self, proto_text):
         reader = ProtoReader(proto_text)

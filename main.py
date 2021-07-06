@@ -1,7 +1,6 @@
 # coding=utf-8
 # Press the green button in the gutter to run the script.
 import json
-
 from proto_parser import *
 
 
@@ -47,19 +46,9 @@ def test1():
 
 def test2():
     parser = ProtoParser()
-    parser.buildDesc("sample.proto")
-    print parser.dumps(sample_proto_obj)
-    print parser.dumpComp(sample_proto_obj)
-    # a4 = parser.dumps(a4_test)
-    # a4_rec = parser.loads(a4)
-    # print_dict(a4_rec)
-    # dump_hex_str = parser.dumps(test_obj)
-    # print dump_hex_str
-    # print "判断是否正确"
-    # assert dump_hex_str == "0900e9aaa8e7b2bee781b5a25d4f00000200a35d4f00fbf9930e0080064300000000ae47bb411500e9aaa8e7b2bee781b5e79a84e5b08fe58fafe788b101000200"
-    # recover_obj = parser.loads(dump_hex_str)
-    # print_dict(test_obj)
-    # print_dict(recover_obj)
+    parser.buildDesc("a1.proto")
+    print parser.dumps(test_obj)
+    print parser.dumpComp(test_obj)
 
 
 def test3():
