@@ -1,6 +1,5 @@
 # coding=utf-8
 import struct
-import json
 
 # Constant Definitions
 HexStringMap = ['0', '1', '2', '3', '4', '5', '6',

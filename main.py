@@ -1,7 +1,8 @@
 # coding=utf-8
 # Press the green button in the gutter to run the script.
-from proto_parser import *
 import json
+
+from proto_parser import *
 
 
 def print_dict(d):
