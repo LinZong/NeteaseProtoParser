@@ -47,8 +47,9 @@ def test1():
 
 def test2():
     parser = ProtoParser()
-    parser.buildDesc("1_8.proto")
-    print parser
+    parser.buildDesc("sample.proto")
+    print parser.dumps(sample_proto_obj)
+    print parser.dumpComp(sample_proto_obj)
     # a4 = parser.dumps(a4_test)
     # a4_rec = parser.loads(a4)
     # print_dict(a4_rec)
