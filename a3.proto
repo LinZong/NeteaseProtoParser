@@ -1,0 +1,14 @@
+{
+  string msg;
+  bool flag;
+  int32 n;
+  uint32 un;
+  uint16 um;
+  int16 m;
+  int8 c;
+  uint8 uc;
+  float x;
+  double y;
+  string Chinease;
+  string empty;
+}

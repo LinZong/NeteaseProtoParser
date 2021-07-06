@@ -1,5 +1,6 @@
 # coding=utf-8
 import struct
+import json
 
 # Constant Definitions
 HexStringMap = ['0', '1', '2', '3', '4', '5', '6',
@@ -7,21 +8,26 @@ HexStringMap = ['0', '1', '2', '3', '4', '5', '6',
 UNKNOWN_SIZE = -1
 BlankSymbol = [" ", "\n", "\r", "\t"]
 
+# Feature switches
+
+USE_RAW_BYTES_AS_STRING_LENGTH = True
+USE_UNICODE_AS_DICT_KEY = False
+
 
 def is_alphabet(ch):
+    ch = ord(ch)
     a_z = range(ord('a'), ord('z'))
     A_Z = range(ord('A'), ord('Z'))
-    return ord(ch) in a_z or ch in A_Z
+    return ch in a_z or ch in A_Z
 
 
 def is_underscore(ch):
-    # 黑体
     return ch == '_'
 
 
 def is_digit(ch):
-    ch_ord = ord(ch)
-    return ord('0') <= ch_ord <= ord('9')
+    ch = ord(ch)
+    return ord('0') <= ch <= ord('9')
 
 
 def is_valid_c_style_var_name(ch, first=False):
@@ -176,6 +182,8 @@ class CompositeType(Type):
         for i in range(0, len(self.inner_types)):
             typ = self.inner_types[i]
             typ_key = self.inner_types_str_key[i]
+            if not USE_UNICODE_AS_DICT_KEY:
+                typ_key = typ_key.encode("utf-8")  # convert unicode to str-typed utf8 content.
             res[typ_key] = typ.deserialize(byte_stream_reader)
         return res
 
@@ -338,12 +346,12 @@ class String(VariableSizePrimitiveType):
         return len(WrapToUnicode(runtime_value))
 
     def serialize(self, runtime_value):
-        # return self.__serialize_use_raw_data_length(runtime_value)
-        length_field = Field(
-            UINT_16, "string-length-property", self.calc_size(runtime_value))
-        length_serialized = length_field.serialize()
-        str_bytes = bytearray(WrapToUnicode(runtime_value), encoding="utf-8")
-        return length_serialized + [int(x) for x in str_bytes]
+        if USE_RAW_BYTES_AS_STRING_LENGTH:
+            return self.__serialize_use_raw_data_length(runtime_value)
+
+        utf_8_repr_runtime_value = WrapToUnicode(runtime_value)
+        str_bytes = bytearray(utf_8_repr_runtime_value, encoding="utf-8")
+        return UINT_16.serialize(len(utf_8_repr_runtime_value)) + [int(x) for x in str_bytes]
 
     @staticmethod
     def __serialize_use_raw_data_length(runtime_value):
@@ -353,6 +361,8 @@ class String(VariableSizePrimitiveType):
         return length + data
 
     def deserialize(self, byte_stream_reader):
+        if USE_RAW_BYTES_AS_STRING_LENGTH:
+            return self.__deserialize_use_raw_data_length(byte_stream_reader)
         # 先读最开始的两个字节，看看整个字符串有多长
         str_length = UINT_16.deserialize(byte_stream_reader)
         str_content = ""
@@ -362,6 +372,12 @@ class String(VariableSizePrimitiveType):
             content += byte_stream_reader.read(bytes_count - 1)
             str_content += bytearray(convert_byte_list_to_stringify_byte_array(content)).decode(encoding="utf-8")
         return str_content
+
+    @staticmethod
+    def __deserialize_use_raw_data_length(byte_stream_reader):
+        str_bytes_length = UINT_16.deserialize(byte_stream_reader)
+        raw_content = byte_stream_reader.read(str_bytes_length)
+        return bytearray(convert_byte_list_to_stringify_byte_array(raw_content)).decode("utf-8").encode("utf-8")
 
     @staticmethod
     def __get_unicode_continuous_bytes_count(first_byte):
@@ -487,21 +503,17 @@ class CompositeField(Field):
         return self.typ.serialize(self.value)
 
     def deserialize(self, byte_stream_reader):
-        res = {}
-        for f in self.fields:
-            res[f.name] = f.deserialize(byte_stream_reader)
-        return res
+        return self.typ.deserialize(byte_stream_reader)
+        # res = {}
+        # for f in self.fields:
+        #     name = f.name if USE_UNICODE_AS_DICT_KEY else f.name.encode("utf-8")
+        #     res[name] = f.deserialize(byte_stream_reader)
+        # return res
 
     # ensure 'value' is dict, then dispatch such dict into each named-fields.
     def set_value(self, value):
         assert isinstance(value, dict)
         self.value = value
-        # for field in self.fields:
-        #     name = field.name
-        #     dict_value = value.get(name)
-        #     if dict_value is None:
-        #         continue
-        #     field.set_value(dict_value)
 
 
 class ByteArrayInputStream(object):
@@ -558,15 +570,15 @@ class ProtoReader(object):
                 "c-style variable name should be started with alphabet or underscore.")
         name += ch
         while not self.reach_end():
-            ch = self.peek()
+            ch = self.read_skip_blank()
             if ch == ';':
                 # 结束
-                self.advance()  # 吃掉;号
+                # 已经吃掉;号
                 return name
             elif is_valid_c_style_var_name(ch, first=False):
                 name += ch
-                self.advance()
             else:
+                print "ERROR  " + name
                 raise self.error(
                     "not a valid char for c-style variable name: %s." % ch)
 
@@ -608,6 +620,8 @@ class ProtoParser(object):
         super(ProtoParser, self).__init__()
         self.root_fields = CompositeField("root")
         self.parsing_fields_pack = []
+        self.curr_filename = ""
+        self.compress_map = {}
 
     @staticmethod
     def parse_field_name(reader):
@@ -773,6 +787,12 @@ class ProtoParser(object):
         data = ParseHexString(s)
         return self.root_fields.deserialize(ByteArrayInputStream(data))
 
+    def dumpComp(self, d):
+        raise Exception("Not implemented yet.")
+
+    def loadComp(self, s):
+        raise Exception("Not implemented yet.")
+
     def parse(self, proto_text):
         reader = ProtoReader(proto_text)
         while not reader.reach_end():
@@ -781,10 +801,12 @@ class ProtoParser(object):
                 self.parsing_fields_pack.append(self.root_fields)
                 self.parse_into(reader, self.root_fields)
                 self.parsing_fields_pack = self.parsing_fields_pack[:-1]
-            else:
-                self.raise_error("invalid char %s at %s" %
-                                 (ch, reader.index - 1))
-        pass
+
+    def buildDesc(self, filename):
+        self.curr_filename = filename
+        with open(filename, "r") as f:
+            proto_text = "".join(f.readlines())
+            self.parse(proto_text)
 
     def raise_error(self, msg):
         raise Exception("PARSER ERROR: " + msg)
